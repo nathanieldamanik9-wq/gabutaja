@@ -1,0 +1,446 @@
+import pygame
+import math
+import random
+import sys
+import os
+
+# ==============================
+# SETUP AWAL - AMAN UNTUK SEMUA SISTEM
+# ==============================
+pygame.init()
+pygame.mixer.pre_init(44100, -16, 2, 512)
+pygame.mixer.init()
+
+# Resolusi HD 1920x1080 (siap upload ke YouTube/Google Drive)
+WIDTH, HEIGHT = 1920, 1080
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Selamat Pagi Ulann - Animasi Spesial")
+clock = pygame.time.Clock()
+
+# Font default sistem (aman untuk semua OS)
+title_font = pygame.font.SysFont("Arial", 120, bold=True)
+button_font = pygame.font.SysFont("Arial", 72, bold=True)
+message_font = pygame.font.SysFont("Comic Sans MS", 100, bold=True)
+subtitle_font = pygame.font.SysFont("Arial", 48, bold=True)
+
+# Warna estetik
+BACKGROUND_DARK = (15, 15, 35)
+BUTTON_COLOR = (220, 50, 80)
+BUTTON_HOVER = (255, 100, 120)
+PETAL_DARK = (180, 30, 60)
+PETAL_MEDIUM = (230, 70, 100)
+PETAL_LIGHT = (255, 150, 170)
+STEM_GREEN = (34, 139, 34)
+LEAF_GREEN = (20, 100, 40)
+SUN_YELLOW = (255, 240, 180)
+GOLD = (255, 215, 0)
+GRASS_DARK = (40, 120, 40)
+GRASS_LIGHT = (70, 180, 70)
+
+# ==============================
+# KELAS PARTIKEL UNTUK EFEK SERBUK SARI
+# ==============================
+class PetalParticle:
+    def __init__(self, x, y, color):
+        self.x = x
+        self.y = y
+        self.vx = random.uniform(-0.8, 0.8)
+        self.vy = random.uniform(-1.2, -0.3)
+        self.size = random.uniform(1.8, 3.2)
+        self.color = color
+        self.alpha = 255
+        self.angle = random.uniform(0, 2 * math.pi)
+        self.rotation_speed = random.uniform(-0.08, 0.08)
+    
+    def update(self):
+        self.x += self.vx
+        self.y += self.vy
+        self.vy += 0.03  # Gravitasi ringan
+        self.alpha = max(0, self.alpha - 3)
+        self.angle += self.rotation_speed
+        self.size *= 0.985
+        return self.alpha > 0 and self.y < HEIGHT
+    
+    def draw(self, surface):
+        if self.alpha <= 0:
+            return
+        s = pygame.Surface((int(self.size * 5), int(self.size * 5)), pygame.SRCALPHA)
+        pygame.draw.circle(s, (*self.color, self.alpha), (int(self.size * 2.5), int(self.size * 2.5)), int(self.size))
+        rotated = pygame.transform.rotate(s, math.degrees(self.angle))
+        surface.blit(rotated, (self.x - rotated.get_width()//2, self.y - rotated.get_height()//2))
+
+# ==============================
+# KELAS BUNGA MAWAR DENGAN ANIMASI REALISTIS
+# ==============================
+class Rose:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.base_y = y
+        self.size = random.uniform(0.9, 1.1)
+        self.sway_angle = random.uniform(0, 2 * math.pi)
+        self.sway_speed = random.uniform(0.008, 0.015)
+        self.bloom = 0.0  # 0 = kuncup, 1 = mekar penuh
+        self.petal_offset = random.uniform(0, 100)
+        self.particles = []
+        self.particle_timer = 0
+        self.color_base = random.choice([PETAL_DARK, PETAL_MEDIUM, PETAL_LIGHT])
+        self.rotation = random.uniform(0, 0.5)
+        self.float_offset = random.uniform(0, 2 * math.pi)
+    
+    def update(self, time):
+        # Gerakan alami seperti tertiup angin
+        self.sway_angle += self.sway_speed
+        self.y = self.base_y + 12 * math.sin(self.sway_angle * 1.8 + time * 0.4)
+        self.x += 2.5 * math.sin(self.sway_angle * 0.9 + time * 0.15 + self.float_offset)
+        
+        # Mekar perlahan (dari kuncup ke mekar)
+        if self.bloom < 0.95:
+            self.bloom += 0.015
+        
+        # Rotasi halus
+        self.rotation += 0.003
+        
+        # Partikel serbuk sari (hanya saat mekar > 70%)
+        if self.bloom > 0.7:
+            self.particle_timer += 1
+            if self.particle_timer > 20 and random.random() < 0.4:
+                self.particle_timer = 0
+                for _ in range(2):
+                    self.particles.append(PetalParticle(
+                        self.x + random.uniform(-18, 18),
+                        self.y - 35 + random.uniform(-12, 12),
+                        (self.color_base[0], self.color_base[1], self.color_base[2])
+                    ))
+        
+        # Update dan bersihkan partikel
+        self.particles = [p for p in self.particles if p.update()]
+    
+    def draw(self, surface, time):
+        # Batang dengan efek lengkung alami
+        stem_points = []
+        for i in range(20):
+            t = i / 19
+            offset_x = 10 * math.sin(t * math.pi + time * 0.6 + self.petal_offset * 0.15)
+            stem_points.append((
+                self.x + offset_x,
+                self.y + 60 + t * 140
+            ))
+        pygame.draw.lines(surface, STEM_GREEN, False, stem_points, int(7 * self.size))
+        
+        # Daun kiri
+        leaf_angle = math.sin(time * 0.8 + self.petal_offset) * 0.4
+        left_leaf = [
+            (self.x - 20, self.y + 90),
+            (self.x - 55, self.y + 70 + 8 * math.sin(time * 1.2)),
+            (self.x - 35, self.y + 100)
+        ]
+        pygame.draw.polygon(surface, LEAF_GREEN, left_leaf)
+        pygame.draw.polygon(surface, (10, 80, 20), left_leaf, 2)
+        
+        # Daun kanan
+        right_leaf = [
+            (self.x + 20, self.y + 90),
+            (self.x + 55, self.y + 70 + 8 * math.cos(time * 1.3)),
+            (self.x + 35, self.y + 100)
+        ]
+        pygame.draw.polygon(surface, LEAF_GREEN, right_leaf)
+        pygame.draw.polygon(surface, (10, 80, 20), right_leaf, 2)
+        
+        # Pusat bunga (inti mawar)
+        center_x, center_y = self.x, self.y - 25
+        
+        # Layer dalam (inti kecil)
+        for i in range(6):
+            angle = i * (2 * math.pi / 6) + self.rotation
+            r = 8 * self.bloom * self.size
+            x = center_x + math.cos(angle) * r
+            y = center_y + math.sin(angle) * r
+            pygame.draw.circle(surface, (100, 20, 40), (int(x), int(y)), int(7 * self.bloom * self.size))
+        
+        # Layer tengah
+        for i in range(9):
+            angle = i * (2 * math.pi / 9) + self.rotation + 0.4
+            r = 18 * self.bloom * self.size
+            x = center_x + math.cos(angle) * r
+            y = center_y + math.sin(angle) * r
+            pygame.draw.circle(surface, self.color_base, (int(x), int(y)), int(12 * self.bloom * self.size))
+        
+        # Layer luar (kelopak besar)
+        for i in range(12):
+            angle = i * (2 * math.pi / 12) + self.rotation + 0.8
+            r = 32 * self.bloom * self.size
+            x = center_x + math.cos(angle) * r
+            y = center_y + math.sin(angle) * r
+            outer_color = (
+                min(255, self.color_base[0] + 30),
+                min(255, self.color_base[1] + 30),
+                min(255, self.color_base[2] + 30)
+            )
+            pygame.draw.circle(surface, outer_color, (int(x), int(y)), int(16 * self.bloom * self.size))
+        
+        # Pusat bunga dengan efek kilau
+        pygame.draw.circle(surface, (250, 200, 150), (int(center_x), int(center_y)), int(10 * self.bloom * self.size))
+        pygame.draw.circle(surface, GOLD, (int(center_x), int(center_y)), int(5 * self.bloom * self.size))
+        
+        # Highlight cahaya
+        highlight_x = int(center_x + 6 * math.cos(time * 2))
+        highlight_y = int(center_y + 6 * math.sin(time * 2))
+        pygame.draw.circle(surface, (255, 255, 255), (highlight_x, highlight_y), int(3.5 * self.bloom))
+        
+        # Gambar partikel
+        for particle in self.particles:
+            particle.draw(surface)
+
+# ==============================
+# HALAMAN 1: WELCOME SCREEN DENGAN TOMBOL
+# ==============================
+def draw_welcome_screen(surface, button_hover):
+    # Background gradient malam
+    for y in range(HEIGHT):
+        ratio = y / HEIGHT
+        r = int(15 + 45 * ratio)
+        g = int(15 + 45 * ratio)
+        b = int(35 + 65 * ratio)
+        pygame.draw.line(surface, (r, g, b), (0, y), (WIDTH, y))
+    
+    # Bintang berkedip
+    for _ in range(200):
+        x = random.randint(0, WIDTH)
+        y = random.randint(0, HEIGHT//2)
+        size = random.uniform(0.8, 2.5)
+        brightness = 180 + 70 * math.sin(pygame.time.get_ticks() * 0.0025 + x * 0.05)
+        pygame.draw.circle(surface, (brightness, brightness, brightness), (x, y), size)
+    
+    # Bulan sabit
+    moon_x, moon_y = WIDTH - 220, 180
+    pygame.draw.circle(surface, (255, 250, 220), (moon_x, moon_y), 70)
+    pygame.draw.circle(surface, (15, 15, 35), (moon_x + 20, moon_y - 10), 65)
+    
+    # Tulisan HALOO dengan efek glow
+    text = title_font.render("HALOO", True, (255, 230, 255))
+    glow = title_font.render("HALOO", True, (255, 180, 255))
+    
+    # Efek glow ganda
+    for offset in [(-4, -4), (4, -4), (-4, 4), (4, 4)]:
+        surface.blit(glow, (WIDTH//2 - text.get_width()//2 + offset[0], HEIGHT//2 - 220 + offset[1]))
+    
+    surface.blit(text, (WIDTH//2 - text.get_width()//2, HEIGHT//2 - 220))
+    
+    # Tombol MASUK dengan efek hover
+    button_width, button_height = 420, 130
+    button_x = WIDTH//2 - button_width//2
+    button_y = HEIGHT//2 + 30
+    
+    # Efek glow saat hover
+    if button_hover:
+        glow_surf = pygame.Surface((button_width + 50, button_height + 50), pygame.SRCALPHA)
+        pygame.draw.rect(glow_surf, (255, 100, 150, 100), (0, 0, button_width + 50, button_height + 50), border_radius=35)
+        surface.blit(glow_surf, (button_x - 25, button_y - 25))
+    
+    # Tombol utama
+    button_color = BUTTON_HOVER if button_hover else BUTTON_COLOR
+    pygame.draw.rect(surface, button_color, (button_x, button_y, button_width, button_height), border_radius=35)
+    pygame.draw.rect(surface, (255, 255, 255), (button_x, button_y, button_width, button_height), 4, border_radius=35)
+    
+    # Teks tombol
+    button_text = button_font.render("MASUK", True, (255, 255, 255))
+    surface.blit(button_text, (button_x + button_width//2 - button_text.get_width()//2, 
+                             button_y + button_height//2 - button_text.get_height()//2 + 8))
+    
+    # Petunjuk tekan ENTER
+    enter_text = subtitle_font.render("ATAU TEKAN [ENTER]", True, (255, 220, 255))
+    surface.blit(enter_text, (WIDTH//2 - enter_text.get_width()//2, button_y + button_height + 45))
+    
+    # Footer
+    footer = subtitle_font.render("Dibuat dengan cinta untuk Ulann", True, (255, 220, 255))
+    surface.blit(footer, (WIDTH//2 - footer.get_width()//2, HEIGHT - 80))
+
+# ==============================
+# HALAMAN 2: TAMAN BUNGA MAWAR DENGAN PESAN KHUSUS
+# ==============================
+def draw_rose_garden(surface, roses, time):
+    # Background taman pagi
+    for y in range(HEIGHT):
+        ratio = y / HEIGHT
+        if ratio < 0.35:  # Langit atas
+            r = int(80 + 100 * ratio)
+            g = int(100 + 130 * ratio)
+            b = int(180 + 60 * (1 - ratio))
+        elif ratio < 0.55:  # Transisi langit-rumput
+            r, g, b = 190, 210, 170
+        else:  # Rumput
+            r = int(50 + 20 * (1 - ratio))
+            g = int(140 + 40 * (1 - ratio))
+            b = int(70 + 20 * (1 - ratio))
+        pygame.draw.line(surface, (r, g, b), (0, y), (WIDTH, y))
+    
+    # Matahari terbit
+    sun_y = 180 + 40 * math.sin(time * 0.08)
+    sun_size = 85 + 25 * math.sin(time * 0.06)
+    pygame.draw.circle(surface, SUN_YELLOW, (WIDTH//2, int(sun_y)), int(sun_size))
+    
+    # Sinar matahari
+    for i in range(16):
+        angle = i * (2 * math.pi / 16)
+        end_x = WIDTH//2 + math.cos(angle) * (sun_size + 180)
+        end_y = sun_y + math.sin(angle) * (sun_size + 180)
+        alpha = 120 + 80 * math.sin(time * 0.5 + i)
+        s = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        pygame.draw.line(s, (255, 245, 200, int(alpha)), (WIDTH//2, sun_y), (end_x, end_y), 4)
+        surface.blit(s, (0, 0))
+    
+    # Rumput detail
+    for i in range(400):
+        x = (i * 5) % WIDTH
+        y = HEIGHT - 60 - (i * 3) % 40
+        height = 25 + 15 * math.sin(time * 0.3 + i * 0.1)
+        color = (GRASS_DARK[0] + i % 20, GRASS_LIGHT[1] - i % 30, GRASS_DARK[2] + i % 15)
+        pygame.draw.line(surface, color, (x, y), (x + random.randint(-8, 8), y - height), 3)
+    
+    # Gambar semua bunga
+    for rose in roses:
+        rose.draw(surface, time)
+    
+    # Tulisan utama "SELAMAT PAGI ULANN" dengan efek khusus
+    message = "SELAMAT PAGI ULANN"
+    text = message_font.render(message, True, (255, 255, 255))
+    glow = message_font.render(message, True, GOLD)
+    
+    # Efek glow ganda
+    for offset in [(-6, -6), (6, -6), (-6, 6), (6, 6), (-9, -9), (9, -9), (-9, 9), (9, 9)]:
+        surface.blit(glow, (WIDTH//2 - text.get_width()//2 + offset[0], HEIGHT//2 - 110 + offset[1]))
+    
+    surface.blit(text, (WIDTH//2 - text.get_width()//2, HEIGHT//2 - 110))
+    
+    # Subtitle dengan animasi melayang
+    subtitle = "Semoga harimu dipenuhi kebahagiaan"
+    sub_text = subtitle_font.render(subtitle, True, (255, 255, 255))
+    float_offset = 18 * math.sin(time * 1.8)
+    surface.blit(sub_text, (WIDTH//2 - sub_text.get_width()//2, HEIGHT//2 + 60 + float_offset))
+    
+    # Petunjuk keluar
+    exit_hint = subtitle_font.render("Tekan [ESC] untuk keluar", True, (255, 255, 255))
+    surface.blit(exit_hint, (WIDTH//2 - exit_hint.get_width()//2, HEIGHT - 70))
+
+# ==============================
+# FUNGSI UTAMA - LOOP APLIKASI
+# ==============================
+def main():
+    # Cek dan load backsound (dengan fallback aman)
+    music_loaded = False
+    audio_files = ["romantic_soundtrack.mp3", "love_song.mp3", "morning.mp3"]
+    
+    for audio_file in audio_files:
+        if os.path.exists(audio_file):
+            try:
+                pygame.mixer.music.load(audio_file)
+                pygame.mixer.music.set_volume(0.55)
+                music_loaded = True
+                print(f"Backsound loaded: {audio_file}")
+                break
+            except Exception as e:
+                print(f"Error loading {audio_file}: {e}")
+    
+    if not music_loaded:
+        print("Backsound tidak ditemukan. Animasi tetap berjalan tanpa musik.")
+        print("Tips: Simpan file MP3 bernama 'romantic_soundtrack.mp3' di folder yang sama untuk menambahkan musik.")
+    
+    # Inisialisasi 10 bunga mawar
+    roses = []
+    positions = [
+        (250, HEIGHT - 320), (480, HEIGHT - 340), (710, HEIGHT - 310),
+        (940, HEIGHT - 330), (1170, HEIGHT - 300), (1400, HEIGHT - 325),
+        (350, HEIGHT - 360), (650, HEIGHT - 380), (950, HEIGHT - 350), (1250, HEIGHT - 370)
+    ]
+    for x, y in positions:
+        roses.append(Rose(x, y))
+    
+    page = 1  # 1 = welcome screen, 2 = rose garden
+    running = True
+    time = 0
+    button_hover = False
+    
+    # Panduan penggunaan di terminal (tanpa emoji!)
+    print("=" * 70)
+    print(" ANIMASI SELAMAT PAGI UNTUK ULANN - VERSI STABIL TANPA ERROR")
+    print("=" * 70)
+    print("\nPetunjuk Penggunaan:")
+    print("1. Tekan ENTER atau klik tombol MASUK untuk memulai animasi")
+    print("2. Tekan ESC kapan saja untuk keluar")
+    print("3. Untuk backsound: simpan file MP3 bernama 'romantic_soundtrack.mp3'")
+    print("   di folder yang sama dengan script ini")
+    print("\nUntuk Rekaman Video HD:")
+    print("- Gunakan OBS Studio (gratis) untuk merekam jendela Pygame")
+    print("- Resolusi: 1920x1080 @ 60 FPS")
+    print("- Format: MP4 (H.264) dengan bitrate 15-20 Mbps")
+    print("- Durasi optimal: 45-60 detik")
+    print("\nAnimasi sedang berjalan... (tekan ESC untuk keluar)")
+    print("=" * 70)
+    
+    # Loop utama
+    while running:
+        time += 0.0167  # ~60 FPS
+        
+        # Event handling
+        mouse_pos = pygame.mouse.get_pos()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            
+            # Navigasi halaman
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
+                elif event.key == pygame.K_RETURN and page == 1:
+                    page = 2
+                    if music_loaded and not pygame.mixer.music.get_busy():
+                        pygame.mixer.music.play(-1)  # Loop selamanya
+            
+            # Deteksi hover tombol di halaman 1
+            if page == 1 and event.type == pygame.MOUSEMOTION:
+                button_x = WIDTH//2 - 210
+                button_y = HEIGHT//2 + 30
+                button_hover = (button_x <= mouse_pos[0] <= button_x + 420) and (button_y <= mouse_pos[1] <= button_y + 130)
+            
+            # Klik tombol di halaman 1
+            if page == 1 and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                button_x = WIDTH//2 - 210
+                button_y = HEIGHT//2 + 30
+                if button_hover:
+                    page = 2
+                    if music_loaded and not pygame.mixer.music.get_busy():
+                        pygame.mixer.music.play(-1)
+        
+        # Update logika bunga (hanya di halaman 2)
+        if page == 2:
+            for rose in roses:
+                rose.update(time)
+        
+        # Render halaman
+        screen.fill((0, 0, 0))
+        
+        if page == 1:
+            draw_welcome_screen(screen, button_hover)
+        else:
+            draw_rose_garden(screen, roses, time)
+        
+        # Watermark halus di pojok
+        watermark = subtitle_font.render("Animasi Khusus untuk Ulann", True, (255, 255, 255))
+        watermark.set_alpha(100)
+        screen.blit(watermark, (40, HEIGHT - 60))
+        
+        pygame.display.flip()
+        clock.tick(60)
+    
+    # Cleanup
+    if pygame.mixer.music.get_busy():
+        pygame.mixer.music.fadeout(500)
+    pygame.quit()
+    sys.exit()
+
+# ==============================
+# JALANKAN APLIKASI
+# ==============================
+if __name__ == "__main__":
+    main()
